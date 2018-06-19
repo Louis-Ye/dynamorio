@@ -44,6 +44,8 @@
 #include <string>
 #include "dr_api.h"
 #include "drmgr.h"
+#include "drsyms.h"
+#include "drwrap.h"
 #include "drmemtrace.h"
 #include "drreg.h"
 #include "drutil.h"
@@ -56,6 +58,19 @@
 #include "../common/named_pipe.h"
 #include "../common/options.h"
 #include "../common/utils.h"
+
+#include <stdio.h>
+#include <stdarg.h>
+static int myprint(const char *format, ...)
+{
+    // int result;
+    // va_list args;
+    // va_start(args, format);
+    // result = vprintf(format, args);
+    // va_end(args);
+    // return result;
+    return 0;
+}
 
 #ifdef ARM
 # include "../../../core/unix/include/syscall_linux_arm.h" // for SYS_cacheflush
@@ -151,6 +166,10 @@ static volatile bool exited_process;
 /* virtual to physical translation */
 static bool have_phys;
 static physaddr_t physaddr;
+
+/* priority of registering callbacks for events */
+static drmgr_priority_t memtrace_pri = {sizeof(drmgr_priority_t),
+    DRMGR_PRIORITY_NAME_MEMTRACE, NULL, NULL, DRMGR_PRIORITY_INSERT_DRWRAP + 1};
 
 /* Allocated TLS slot offsets */
 enum {
@@ -937,6 +956,8 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *bb,
                       instr_t *instr, bool for_trace,
                       bool translating, void *user_data)
 {
+    myprint("# event_app_instruction, instr pc=%p #\n", instr_get_app_pc(instr));
+
     int i, adjust = 0;
     user_data_t *ud = (user_data_t *) user_data;
     dr_pred_type_t pred;
@@ -1006,6 +1027,9 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *bb,
         !op_L0_filter.get_value() &&
         // The delay instr buffer is not full.
         ud->num_delay_instrs < MAX_NUM_DELAY_INSTRS) {
+
+        myprint("## in delay_instrs #\n");
+
         ud->delay_instrs[ud->num_delay_instrs++] = instr;
         return DR_EMIT_DEFAULT;
     }
@@ -1034,8 +1058,11 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *bb,
     reg_id_t reg_skip = DR_REG_NULL;
     reg_id_t reg_barrier = DR_REG_NULL;
     if (!op_L0_filter.get_value()) {
+        myprint("## in !op_L0_filter.get_value() #\n");
+
         insert_load_buf_ptr(drcontext, bb, instr, reg_ptr);
         if (thread_filtering_enabled) {
+            myprint("## thread_filtering_enabled #\n");
             bool short_reaches = false;
 #ifdef X86
             if (ud->num_delay_instrs == 0 && !drmgr_is_last_instr(drcontext, instr)) {
@@ -1050,11 +1077,15 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *bb,
     }
 
     if (ud->num_delay_instrs != 0) {
+        myprint("## ud->num_delay_instrs=%d #\n", ud->num_delay_instrs);
+
         adjust = instrument_delay_instrs(drcontext, tag, bb, ud, instr,
                                          reg_ptr, adjust);
     }
 
     if (ud->strex != NULL) {
+        myprint("## ud->strex = %p #\n", ud->strex);
+
         DR_ASSERT(instr_is_exclusive_store(ud->strex));
         adjust = instrument_instr(drcontext, tag, ud, bb,
                                   instr, reg_ptr, adjust, ud->strex);
@@ -1080,15 +1111,22 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *bb,
     // one to handle a zero-iter loop.  For offline, we just record the pc; for
     // online we have to ignore "instr" here in instru_online::instrument_instr().
     if (!ud->repstr || drmgr_is_first_instr(drcontext, instr)) {
+        myprint("## drmgr_is_first_instr(drcontext, instr)=%d #\n", drmgr_is_first_instr(drcontext, instr));
+
         adjust = instrument_instr(drcontext, tag, ud, bb,
                                   instr, reg_ptr, adjust, instr);
     }
     ud->last_app_pc = instr_get_app_pc(instr);
 
+    myprint("## adjust=%d #\n", adjust);
+
     if (is_memref) {
+        myprint("## is_memref #\n");
+
         if (pred != DR_PRED_NONE && adjust != 0) {
             // Update buffer ptr and reset adjust to 0, because
             // we may not execute the inserted code below.
+            myprint("## pred != DR_PRED_NONE = %d #\n", pred != DR_PRED_NONE);
             insert_update_buf_ptr(drcontext, bb, instr, reg_ptr,
                                   DR_PRED_NONE, adjust);
             adjust = 0;
@@ -1118,6 +1156,8 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *bb,
      * assuming the clean call does not need the two register values.
      */
     if (drmgr_is_last_instr(drcontext, instr)) {
+        myprint("## drmgr_is_last_instr(drcontext, instr) #\n");
+
         if (op_L0_filter.get_value())
             insert_load_buf_ptr(drcontext, bb, instr, reg_ptr);
         instrument_clean_call(drcontext, bb, instr, reg_ptr);
@@ -1139,6 +1179,8 @@ static dr_emit_flags_t
 event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
                  bool for_trace, bool translating, OUT void **user_data)
 {
+    myprint("# event_bb_app2app #\n");
+
     user_data_t *data = (user_data_t *) dr_thread_alloc(drcontext, sizeof(user_data_t));
     data->last_app_pc = NULL;
     data->strex = NULL;
@@ -1156,6 +1198,8 @@ static dr_emit_flags_t
 event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
                   bool for_trace, bool translating, void *user_data)
 {
+    myprint("# event_bb_analysis #\n");
+
     user_data_t *ud = (user_data_t *) user_data;
     instru->bb_analysis(drcontext, tag, &ud->instru_field, bb, ud->repstr);
     return DR_EMIT_DEFAULT;
@@ -1166,6 +1210,8 @@ event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
                        bool for_trace, bool translating,
                        void *user_data)
 {
+    myprint("# event_bb_instru2instru #\n");
+
     dr_thread_free(drcontext, user_data, sizeof(user_data_t));
     return DR_EMIT_DEFAULT;
 }
@@ -1266,7 +1312,7 @@ enable_delay_instrumentation()
      * to tracing instrumentation.
      */
     if (!drmgr_register_bb_instrumentation_event(event_delay_bb_analysis,
-                                                 event_delay_app_instruction, NULL))
+                                                 event_delay_app_instruction, &memtrace_pri))
         DR_ASSERT(false);
     enable_tracing_lock = dr_mutex_create();
 }
@@ -1291,13 +1337,14 @@ exit_delay_instrumentation()
 static void
 enable_tracing_instrumentation()
 {
+    myprint("# enable_tracing_instrumentation #\n");
     if (!drmgr_register_pre_syscall_event(event_pre_syscall) ||
         !drmgr_register_kernel_xfer_event(event_kernel_xfer) ||
         !drmgr_register_bb_instrumentation_ex_event(event_bb_app2app,
                                                     event_bb_analysis,
                                                     event_app_instruction,
                                                     event_bb_instru2instru,
-                                                    NULL))
+                                                    &memtrace_pri))
         DR_ASSERT(false);
     dr_register_filter_syscall_event(event_filter_syscall);
     tracing_enabled = true;
@@ -1396,6 +1443,116 @@ event_delay_app_instruction(void *drcontext, void *tag, instrlist_t *bb, instr_t
                          OPND_CREATE_INT32(num_instrs));
 #endif
     return DR_EMIT_DEFAULT;
+}
+
+
+typedef struct _func_metadata {
+    const trace_marker_type_t marker_retaddr;
+    const trace_marker_type_t marker_arg;
+    const trace_marker_type_t marker_retval;
+    const char *name;
+    const int num_args;
+} func_metadata;
+
+#define MALLOC_RETADDR TRACE_MARKER_TYPE_FUNC_MALLOC_RETADDR
+#define MALLOC_ARG     TRACE_MARKER_TYPE_FUNC_MALLOC_ARG
+#define MALLOC_RETVAL  TRACE_MARKER_TYPE_FUNC_MALLOC_RETVAL
+
+static const func_metadata instru_funcs[] = {
+    {MALLOC_RETADDR, MALLOC_ARG, MALLOC_RETVAL, "malloc", 1},
+    {MALLOC_RETADDR, MALLOC_ARG, MALLOC_RETVAL, "(anonymous namespace)::do_malloc", 1},
+
+#ifdef WINDOWS
+    {MALLOC_RETADDR, MALLOC_ARG, MALLOC_RETVAL, "malloc_impl", 1 },
+#endif // WINDOWS
+
+#ifdef UNIX
+    {MALLOC_RETADDR, MALLOC_ARG, MALLOC_RETVAL, "tc_malloc", 1 },
+    {MALLOC_RETADDR, MALLOC_ARG, MALLOC_RETVAL, "__libc_malloc", 1},
+#endif // UNIX
+};
+
+static void
+func_pre_hook(void *wrapcxt, INOUT void **user_data)
+{
+    myprint("# inside func_pre_hook #\n");
+
+    void *drcontext = drwrap_get_drcontext(wrapcxt);
+    // if (file_ops_func.handoff_buf == NULL)
+    //     memtrace(drcontext, false);
+
+    per_thread_t *data = (per_thread_t *) drmgr_get_tls_field(drcontext, tls_idx);
+    if (BUF_PTR(data->seg_base) == NULL)
+        return; /* This thread was filtered out. */
+
+    func_metadata *e = (func_metadata *) *user_data;
+    app_pc retaddr = drwrap_get_retaddr(wrapcxt);
+
+    dr_log(NULL, DR_LOG_ALL, 1, "func_pre_hook func_name=%s, retaddr=%p\n",
+           e->name, retaddr);
+    BUF_PTR(data->seg_base) +=
+        instru->append_marker(BUF_PTR(data->seg_base), e->marker_retaddr,
+                              (uintptr_t)retaddr);
+
+    for (int i = 0; i < e->num_args; i++) {
+        void * arg_i = drwrap_get_arg(wrapcxt, i);
+        dr_log(NULL, DR_LOG_ALL, 1, " arg%d = %d\n", i, arg_i);
+        BUF_PTR(data->seg_base) +=
+            instru->append_marker(BUF_PTR(data->seg_base), e->marker_arg,
+                                  (uintptr_t)arg_i);
+    }
+}
+
+static void
+func_post_hook(void *wrapcxt, void *user_data)
+{
+    myprint("# inside func_post_hook #\n");
+
+    void *drcontext = drwrap_get_drcontext(wrapcxt);
+    // if (file_ops_func.handoff_buf == NULL)
+    //     memtrace(drcontext, false);
+
+    per_thread_t *data = (per_thread_t *) drmgr_get_tls_field(drcontext, tls_idx);
+    if (BUF_PTR(data->seg_base) == NULL)
+        return; /* This thread was filtered out. */
+
+    func_metadata *e = (func_metadata *)user_data;
+    void * retval = drwrap_get_retval(wrapcxt);
+
+    dr_log(NULL, DR_LOG_ALL, 1,
+           "func_post_hook func_name=%s, retval=" UINT64_FORMAT_STRING "\n",
+           e->name, (uint64)retval);
+    BUF_PTR(data->seg_base) +=
+            instru->append_marker(BUF_PTR(data->seg_base), e->marker_retval,
+                                  (uintptr_t)retval);
+}
+
+static void
+instru_funcs_module_load(void *drcontext, const module_data_t *mod, bool loaded)
+{
+    size_t offset;
+    drsym_error_t result;
+    app_pc func_pc;
+
+    if (drcontext == NULL || mod == NULL) return;
+    dr_log(NULL, DR_LOG_ALL, 1,
+           "instru_funcs_module_load start=%p, mod->full_path=%s\n",
+           mod->start, mod->full_path);
+
+    for (size_t i = 0; i < sizeof(instru_funcs) / sizeof(func_metadata); i++) {
+        result = drsym_lookup_symbol(
+            mod->full_path, instru_funcs[i].name, &offset, DRSYM_DEMANGLE);
+        dr_log(NULL, DR_LOG_ALL, 1, "func_name=%s, result=%d, offset=%d\n",
+               instru_funcs[i].name, result, offset);
+
+        if (result == DRSYM_SUCCESS) {
+            func_pc = mod->start + offset;
+            bool wrap = drwrap_wrap_ex(func_pc, func_pre_hook, func_post_hook,
+                                       (void *)&instru_funcs[i], 0);
+            // bool wrap = drwrap_wrap_ex(func_pc, NULL, NULL, NULL, 0);
+            dr_log(NULL, DR_LOG_ALL, 1, "result of drwrap=%d\n", wrap);
+        }
+    }
 }
 
 /***************************************************************************
@@ -1555,6 +1712,11 @@ event_exit(void)
            num_refs);
     NOTIFY(1, "drmemtrace exiting process " PIDFMT"; traced " UINT64_FORMAT_STRING
            " references.\n", dr_get_process_id(), num_refs);
+
+    drmgr_unregister_module_load_event(instru_funcs_module_load);
+    drwrap_exit();
+    drsym_exit();
+
     /* we use placement new for better isolation */
     instru->~instru_t();
     dr_global_free(instru, MAX_INSTRU_SIZE);
@@ -1710,6 +1872,10 @@ drmemtrace_client_main(client_id_t id, int argc, const char *argv[])
           op_L0D_size.get_value() != 0))) {
         FATAL("Usage error: L0I_size and L0D_size must be 0 or powers of 2.");
     }
+
+    DR_ASSERT(drsym_init(0) == DRSYM_SUCCESS);
+    DR_ASSERT(drwrap_init()); // drwrap_init() contains drmgr_init()
+    drmgr_register_module_load_event(instru_funcs_module_load);
 
     drreg_init_and_fill_vector(&scratch_reserve_vec, true);
 #ifdef X86

@@ -34,6 +34,7 @@
 #include "reader.h"
 #include "../common/memref.h"
 #include "../common/utils.h"
+# include <iostream>
 
 #ifdef VERBOSE
 # include <iostream>
@@ -52,6 +53,17 @@ reader_t::operator*()
 {
     return cur_ref;
 }
+
+// inline static bool is_func_entry(trace_entry_t * entry)
+// {
+//     if (entry->type == TRACE_TYPE_MARKER) {
+//         trace_marker_type_t marker_type = (trace_marker_type_t)entry->size;
+//         return marker_type == TRACE_MARKER_TYPE_FUNC_MALLOC_RETADDR ||
+//                marker_type == TRACE_MARKER_TYPE_FUNC_MALLOC_ARG ||
+//                marker_type == TRACE_MARKER_TYPE_FUNC_MALLOC_RETVAL;
+//     }
+//     return false;
+// }
 
 reader_t&
 reader_t::operator++()
@@ -77,6 +89,12 @@ reader_t::operator++()
         std::cerr << "RECV: " << input_entry->type << " sz=" << input_entry->size <<
             " addr=" << (void *)input_entry->addr << std::endl;
 #endif
+        // if (is_func_entry(input_entry)) {
+        //     std::cerr << "RECV: " << input_entry->type << " sz=" << input_entry->size <<
+        //         " addr=" << (void *)input_entry->addr << std::endl;
+        //     continue; // TODO: deal with function entry instead of skipping
+        // }
+
         bool have_memref = false;
         switch (input_entry->type) {
         case TRACE_TYPE_READ:

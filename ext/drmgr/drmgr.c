@@ -34,6 +34,19 @@
  * combining and coordinating multiple instrumentation passes
  */
 
+#include <stdio.h>
+#include <stdarg.h>
+static int myprint(const char *format, ...)
+{
+    // int result;
+    // va_list args;
+    // va_start(args, format);
+    // result = vprintf(format, args);
+    // va_end(args);
+    // return result;
+    return 0;
+}
+
 #include "dr_api.h"
 #include "drmgr.h"
 #include "../ext_utils.h"
@@ -885,6 +898,9 @@ drmgr_bb_cb_add(cb_list_t *list,
 
     dr_rwlock_write_lock(bb_cb_lock);
     idx = priority_event_add(list, priority);
+
+    myprint("# inside drmgr_bb_cb_add, priority name = %s, idx = %d #\n", priority->name, idx);
+
     if (idx >= 0) {
         cb_entry_t *new_e = &list->cbs.bb[idx];
         if (app2app_ex_func != NULL) {
@@ -959,6 +975,8 @@ drmgr_register_bb_instrumentation_ex_event(drmgr_app2app_ex_cb_t app2app_func,
                                            drmgr_ilist_ex_cb_t instru2instru_func,
                                            drmgr_priority_t *priority)
 {
+    myprint("# drmgr_register_bb_instrumentation_ex_event, priority->name=%s #\n", priority->name);
+
     bool ok = true;
     if ((app2app_func == NULL && analysis_func == NULL && insertion_func == NULL &&
          instru2instru_func == NULL) ||

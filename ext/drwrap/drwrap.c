@@ -34,6 +34,19 @@
 #include <stddef.h> /* offsetof */
 #include <limits.h> /* USHRT_MAX */
 
+#include <stdio.h>
+#include <stdarg.h>
+static int myprint(const char *format, ...)
+{
+    // int result;
+    // va_list args;
+    // va_start(args, format);
+    // result = vprintf(format, args);
+    // va_end(args);
+    // return result;
+    return 0;
+}
+
 /* currently using asserts on internal logic sanity checks (never on
  * input from user)
  */
@@ -1777,6 +1790,8 @@ drwrap_ensure_postcall(void *drcontext, wrap_entry_t *wrap,
 static void
 drwrap_in_callee(void *arg1, reg_t xsp _IF_NOT_X86(reg_t lr))
 {
+    myprint("# inside drwrap_in_callee #\n");
+
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) drmgr_get_tls_field(drcontext, tls_idx);
     wrap_entry_t *wrap = NULL, *e;
@@ -1806,6 +1821,8 @@ drwrap_in_callee(void *arg1, reg_t xsp _IF_NOT_X86(reg_t lr))
         pc = wrap->func;
     } else
         pc = (app_pc) arg1;
+
+    myprint("## pc = %p #\n", pc);
 
     NOTIFY(2, "%s: level %d function "PFX"\n", __FUNCTION__, pt->wrap_level+1, pc);
 
@@ -2111,6 +2128,8 @@ drwrap_after_callee_func(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc,
 static void
 drwrap_after_callee(app_pc retaddr, reg_t xsp)
 {
+    myprint("# inside drwrap_after_callee retaddr=%p #\n", retaddr);
+
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) drmgr_get_tls_field(drcontext, tls_idx);
     dr_mcontext_t mc;
@@ -2180,6 +2199,8 @@ drwrap_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     dr_recurlock_lock(wrap_lock);
     wrap = hashtable_lookup(&wrap_table, (void *)pc);
     if (wrap != NULL) {
+        myprint("# drwrap_event_bb_insert pre_call insert, pc=%p #\n", instr_get_app_pc(inst));
+
         void *arg1 = TEST(DRWRAP_NO_FRILLS, global_flags) ? (void *)wrap : (void *) pc;
         /* i#690: do not bother saving registers that should be scratch at
          * function entry, if requested by user.
@@ -2206,6 +2227,9 @@ drwrap_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
          * that requires spilling a GPR and flags and gets messy w/o drreg
          * vs other components' spill slots.
          */
+
+        myprint("# drwrap_event_bb_insert post_call insert, pc=%p #\n", instr_get_app_pc(inst));
+
         dr_cleancall_save_t flags = 0;
         dr_insert_clean_call_ex(drcontext, bb, inst, (void *)drwrap_after_callee,
                                 flags, 2,

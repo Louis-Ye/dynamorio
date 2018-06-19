@@ -183,6 +183,7 @@ offline_instru_t::get_entry_type(byte *buf_ptr) const
     case OFFLINE_TYPE_PID: return TRACE_TYPE_PID;
     case OFFLINE_TYPE_TIMESTAMP: return TRACE_TYPE_THREAD; // Closest.
     case OFFLINE_TYPE_IFLUSH: return TRACE_TYPE_INSTR_FLUSH;
+    case OFFLINE_TYPE_EXTENDED: return TRACE_TYPE_MARKER;
     }
     DR_ASSERT(false);
     return TRACE_TYPE_THREAD_EXIT; // Unknown: returning rarest entry.

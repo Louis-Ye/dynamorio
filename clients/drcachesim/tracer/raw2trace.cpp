@@ -46,6 +46,8 @@
 #include <sstream>
 #include <vector>
 
+#include <iostream>
+
 // XXX: DR should export this
 #define INVALID_THREAD_ID 0
 
@@ -321,6 +323,39 @@ raw2trace_t::find_mapped_trace_address(app_pc trace_address, OUT app_pc *mapped_
 // time, but we use a vector for generality.  We expect our overall performance to
 // be i/o bound (or ISA decode bound) and aren't worried about some extra copies
 // from the vector.
+
+#include <iostream>
+inline static void print_entry(uint tidx, offline_entry_t *dest)
+{
+    // std::cout << "type:" << dest->addr.type;
+    // switch(dest->addr.type) {
+    //     case OFFLINE_TYPE_MEMREF:
+    //     case OFFLINE_TYPE_MEMREF_HIGH:
+    //     case OFFLINE_TYPE_IFLUSH:
+    //         std::cout << " " << dest->addr.addr;
+    //         break;
+    //     case OFFLINE_TYPE_PC:
+    //         std::cout << " " << dest->pc.instr_count << " " << dest->pc.modidx << " " << dest->pc.modoffs;
+    //         break;
+    //     case OFFLINE_TYPE_THREAD:
+    //         std::cout << " " << dest->tid.tid;
+    //         break;
+    //     case OFFLINE_TYPE_PID:
+    //         std::cout << " " << dest->pid.pid;
+    //         break;
+    //     case OFFLINE_TYPE_TIMESTAMP:
+    //         std::cout << " " << dest->timestamp.usec;
+    //         break;
+    //     case OFFLINE_TYPE_EXTENDED:
+    //         std::cout << " " << dest->extended.ext << " " << dest->extended.valueB << " " << dest->extended.valueA;
+    //         break;
+    //     default:
+    //         std::cerr << " something is wrong - combined_value=" << dest->combined_value;
+    //         break;
+    // }
+    // std::cout << " tidx:" << tidx << std::endl;
+}
+
 bool
 raw2trace_t::read_from_thread_file(uint tidx, offline_entry_t *dest, size_t count,
                                    OUT size_t *num_read)
@@ -342,6 +377,7 @@ raw2trace_t::read_from_thread_file(uint tidx, offline_entry_t *dest, size_t coun
     }
     if (num_read != nullptr)
         *num_read = from_buf + count;
+    print_entry(tidx, dest);
     return true;
 }
 
@@ -581,6 +617,19 @@ raw2trace_t::append_delayed_branch(uint tidx)
     return "";
 }
 
+
+// inline static bool is_func_entry(offline_entry_t * entry)
+// {
+//     if (entry->extended.type == OFFLINE_TYPE_EXTENDED &&
+//         entry->extended.ext == OFFLINE_EXT_TYPE_MARKER) {
+//         trace_marker_type_t marker = (trace_marker_type_t)entry->extended.valueB;
+//         return marker == TRACE_MARKER_TYPE_FUNC_MALLOC_RETADDR ||
+//                marker == TRACE_MARKER_TYPE_FUNC_MALLOC_ARG ||
+//                marker == TRACE_MARKER_TYPE_FUNC_MALLOC_RETVAL;
+//     }
+//     return false;
+// }
+
 /***************************************************************************
  * Top-level
  */
@@ -690,6 +739,11 @@ raw2trace_t::merge_and_process_thread_files()
                 return ss.str();
             }
         }
+
+        // if (is_func_entry(&in_entry)) {
+        //     std::cerr << in_entry.extended.type << " " << in_entry.extended.ext << " "<< in_entry.extended.valueB << " "<< in_entry.extended.valueA << std::endl;
+        //     continue; // TODO: deal with function entry instead of skipping
+        // }
         if (in_entry.timestamp.type == OFFLINE_TYPE_TIMESTAMP) {
             VPRINT(2, "Thread %u timestamp 0x" ZHEX64_FORMAT_STRING "\n",
                    (uint)tids[tidx], in_entry.timestamp.usec);
@@ -726,6 +780,9 @@ raw2trace_t::merge_and_process_thread_files()
             }
         } else if (in_entry.addr.type == OFFLINE_TYPE_MEMREF ||
                    in_entry.addr.type == OFFLINE_TYPE_MEMREF_HIGH) {
+
+            std::cout << "~~ last_bb_handled=" << last_bb_handled << std::endl;
+
             if (!last_bb_handled) {
                 // For currently-unhandled non-module code, memrefs are handled here
                 // where we can easily handle the transition out of the bb.
@@ -738,6 +795,7 @@ raw2trace_t::merge_and_process_thread_files()
                 buf += sizeof(*entry);
             } else {
                 // We should see an instr entry first
+                print_entry(tidx, &in_entry);
                 return "memref entry found outside of bb";
             }
         } else if (in_entry.pc.type == OFFLINE_TYPE_PC) {
