@@ -1878,9 +1878,9 @@ drmemtrace_client_main(client_id_t id, int argc, const char *argv[])
 
     if (op_enable_func_trace.get_value()) {
         if (!(drsym_init(0) == DRSYM_SUCCESS) ||
-            !drwrap_init())
+            !drwrap_init() ||
+            !drmgr_register_module_load_event(instru_funcs_module_load))
             DR_ASSERT(false);
-        drmgr_register_module_load_event(instru_funcs_module_load);
     }
 
     drreg_init_and_fill_vector(&scratch_reserve_vec, true);
