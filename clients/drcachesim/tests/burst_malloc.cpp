@@ -34,10 +34,8 @@
  * a "burst" of execution in the middle of the application.  It then detaches.
  */
 
-/* We deliberately do not include configure.h here to simulate what an
- * actual app will look like.  configure_DynamoRIO_static sets DR_APP_EXPORTS
- * for us.
- */
+/* Like burst_static we deliberately do not include configure.h here */
+
 #include "dr_api.h"
 #include <assert.h>
 #include <iostream>
@@ -57,10 +55,20 @@ my_setenv(const char *var, const char *value)
 static int
 do_some_work(int arg)
 {
-    static int iters = 512;
+    static const int iters = 1000;
+    static double *vals[iters];
+
     double val = (double)arg;
     for (int i = 0; i < iters; ++i) {
-        val += sin(val);
+        vals[i] = (double *)malloc(sizeof(double));
+        *vals[i] = sin(val);
+        val += *vals[i];
+    }
+    for (int i = 0; i < iters; i++) {
+        val += *vals[i];
+    }
+    for (int i = 0; i < iters; i++) {
+        free(vals[i]);
     }
     return (val > 0);
 }
@@ -68,40 +76,29 @@ do_some_work(int arg)
 int
 main(int argc, const char *argv[])
 {
-    static int outer_iters = 2048;
-    /* We trace a 4-iter burst of execution. */
-    static int iter_start = outer_iters/3;
-    static int iter_stop = iter_start + 4;
-
     /* We also test -rstats_to_stderr */
     if (!my_setenv("DYNAMORIO_OPTIONS", "-stderr_mask 0xc -rstats_to_stderr "
                    "-client_lib ';;-offline'"))
         std::cerr << "failed to set env var!\n";
 
     /* We use an outer loop to test re-attaching (i#2157). */
-    for (int j = 0; j < 3; ++j) {
-        std::cerr << "pre-DR init\n";
-        dr_app_setup();
-        assert(!dr_app_running_under_dynamorio());
+    std::cerr << "pre-DR init\n";
+    dr_app_setup();
+    assert(!dr_app_running_under_dynamorio());
 
-        for (int i = 0; i < outer_iters; ++i) {
-            if (i == iter_start) {
-                std::cerr << "pre-DR start\n";
-                dr_app_start();
-            }
-            if (i >= iter_start && i <= iter_stop)
-                assert(dr_app_running_under_dynamorio());
-            else
-                assert(!dr_app_running_under_dynamorio());
-            if (do_some_work(i) < 0)
-                std::cerr << "error in computation\n";
-            if (i == iter_stop) {
-                std::cerr << "pre-DR detach\n";
-                dr_app_stop_and_cleanup();
-            }
-        }
-        std::cerr << "all done\n";
-    }
+    std::cerr << "pre-DR start\n";
+    if (do_some_work(1) < 0)
+        std::cerr << "error in computation\n";
+
+    dr_app_start();
+    if (do_some_work(2) < 0)
+        std::cerr << "error in computation\n";
+    std::cerr << "pre-DR detach\n";
+    dr_app_stop_and_cleanup();
+
+    if (do_some_work(3) < 0)
+        std::cerr << "error in computation\n";
+    std::cerr << "all done\n";
     return 0;
 }
 

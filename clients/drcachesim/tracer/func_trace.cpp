@@ -42,6 +42,18 @@
 #include "../common/options.h"
 #include "func_trace.h"
 
+// #include <stdio.h>
+// #include <stdarg.h>
+// static int myprint(const char *format, ...)
+// {
+//     int result;
+//     va_list args;
+//     va_start(args, format);
+//     result = vprintf(format, args);
+//     va_end(args);
+//     return result;
+//     return 0;
+// }
 
 typedef struct {
     std::string name;
@@ -105,8 +117,9 @@ instru_funcs_module_load(void *drcontext, const module_data_t *mod, bool loaded)
         auto &f = funcs[i];
         result = drsym_lookup_symbol(mod->full_path, f.name.c_str(), &offset,
                                      DRSYM_DEMANGLE);
-        dr_log(NULL, DR_LOG_ALL, 1, "func_name=%s, result=%d, offset=%d\n",
-               f.name.c_str(), result, offset);
+        dr_log(NULL, DR_LOG_ALL, 1,
+               "func_name=%s, func_id=%d, func_arg_num=%d, result=%d, offset=%d\n",
+               f.name.c_str(), f.id, f.arg_num, result, offset);
 
         if (result == DRSYM_SUCCESS) {
             func_pc = mod->start + offset;

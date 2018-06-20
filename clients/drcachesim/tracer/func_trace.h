@@ -40,6 +40,16 @@
 typedef void (*func_trace_append_entry_t)
     (void *drcontext, trace_marker_type_t marker, uintptr_t value);
 
+
+#ifdef __cplusplus
+extern "C" {
+DR_EXPORT bool
+func_trace_init(func_trace_append_entry_t append_entry_);
+DR_EXPORT void
+func_trace_exit();
+}
+#endif
+
 DR_EXPORT
 /**
  * Initializes the func_trace module. Each call must be paired with a corresponding

@@ -1461,17 +1461,6 @@ event_delay_app_instruction(void *drcontext, void *tag, instrlist_t *bb, instr_t
     return DR_EMIT_DEFAULT;
 }
 
-
-typedef struct _func_metadata {
-    const trace_marker_type_t marker_retaddr;
-    const trace_marker_type_t marker_arg;
-    const trace_marker_type_t marker_retval;
-    const char *name;
-    const int num_args;
-} func_metadata;
-
-
-
 /***************************************************************************
  * Top level.
  */
