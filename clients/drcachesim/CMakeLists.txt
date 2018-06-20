@@ -205,6 +205,7 @@ macro(add_drmemtrace name type)
     tracer/instru_offline.cpp
     tracer/instru_online.cpp
     tracer/physaddr.cpp
+    tracer/func_trace.cpp
     ${client_and_sim_srcs}
     )
   configure_DynamoRIO_client(${name})
