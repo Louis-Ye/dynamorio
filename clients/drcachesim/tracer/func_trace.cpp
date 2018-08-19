@@ -37,12 +37,13 @@
 #include <set>
 #include "dr_api.h"
 #include "drsyms.h"
-#include "drwrap.h"
+// #include "drwrap.h"
 #include "drmgr.h"
 #include "drvector.h"
 #include "trace_entry.h"
 #include "../common/options.h"
 #include "func_trace.h"
+#include "func_wrap.h"
 
 // The expected pattern for a single_op_value is:
 //     function_name|function_id|arguments_num
@@ -92,21 +93,36 @@ free_func_entry(void *entry)
 // NOTE: try to avoid invoking any code that could be traced by func_pre_hook
 //       (e.g., STL, libc, etc.)
 static void
-func_pre_hook(void *wrapcxt, INOUT void **user_data)
+// func_pre_hook(void *wrapcxt, INOUT void **user_data)
+func_pre_hook(void *wrapcxt, void *user_data)
 {
-    void *drcontext = drwrap_get_drcontext(wrapcxt);
-    if (drcontext == NULL)
+    NOTIFY(2, "===> pre_hook\n");
+    // void *drcontext = drwrap_get_drcontext(wrapcxt);
+    void *drcontext = func_wrap_get_drcontext(wrapcxt);
+    if (drcontext == NULL) {
+        NOTIFY(2, "<=== drcontext=NULL, user_data=%u\n", (size_t)user_data);
         return;
+    }
 
-    size_t idx = (size_t)*user_data;
+    // size_t idx = (size_t)*user_data;
+    size_t idx = (size_t)user_data;
     func_metadata_t *f = (func_metadata_t *)drvector_get_entry(&funcs, (uint)idx);
-    app_pc retaddr = drwrap_get_retaddr(wrapcxt);
+    // app_pc retaddr = drwrap_get_retaddr(wrapcxt);
+    app_pc retaddr = func_wrap_get_retaddr(wrapcxt);
+
+    NOTIFY(2, "wrapcxt=%p, idx=%u, name=%s, f->id=%d, retaddr=%p\n",
+           wrapcxt, idx, f->name, f->id, retaddr);
+
     append_entry(drcontext, TRACE_MARKER_TYPE_FUNC_ID, (uintptr_t)f->id);
     append_entry(drcontext, TRACE_MARKER_TYPE_FUNC_RETADDR, (uintptr_t)retaddr);
     for (int i = 0; i < f->arg_num; i++) {
-        uintptr_t arg_i = (uintptr_t)drwrap_get_arg(wrapcxt, i);
+        // uintptr_t arg_i = (uintptr_t)drwrap_get_arg(wrapcxt, i);
+        uintptr_t arg_i = (uintptr_t)func_wrap_get_arg(wrapcxt, i);
+        NOTIFY(2, "arg_%d=%u\n", i, arg_i);
         append_entry(drcontext, TRACE_MARKER_TYPE_FUNC_ARG, arg_i);
     }
+
+    NOTIFY(2, "<=== pre_hook done, idx=%u\n", idx);
 }
 
 // NOTE: try to avoid invoking any code that could be traced by func_post_hook
@@ -114,15 +130,28 @@ func_pre_hook(void *wrapcxt, INOUT void **user_data)
 static void
 func_post_hook(void *wrapcxt, void *user_data)
 {
-    void *drcontext = drwrap_get_drcontext(wrapcxt);
-    if (drcontext == NULL)
+    NOTIFY(2, "===> post_hook\n");
+    // void *drcontext = drwrap_get_drcontext(wrapcxt);
+    void *drcontext = func_wrap_get_drcontext(wrapcxt);
+    if (drcontext == NULL) {
+        NOTIFY(2, "<=== drcontext=NULL, user_data=%u\n", (size_t)user_data);
         return;
+    }
 
     size_t idx = (size_t)user_data;
     func_metadata_t *f = (func_metadata_t *)drvector_get_entry(&funcs, (uint)idx);
-    uintptr_t retval = (uintptr_t)drwrap_get_retval(wrapcxt);
+    // app_pc retaddr = drwrap_get_retaddr(wrapcxt);
+    // uintptr_t retval = (uintptr_t)drwrap_get_retval(wrapcxt);
+    app_pc retaddr = func_wrap_get_retaddr(wrapcxt);
+    uintptr_t retval = (uintptr_t)func_wrap_get_retval(wrapcxt);
+
+    NOTIFY(2, "wrapcxt=%p, idx=%u, name=%s, f->id=%d, retaddr=%p, retval=%p\n",
+           wrapcxt, idx, f->name, f->id, retaddr, retval);
+
     append_entry(drcontext, TRACE_MARKER_TYPE_FUNC_ID, (uintptr_t)f->id);
     append_entry(drcontext, TRACE_MARKER_TYPE_FUNC_RETVAL, retval);
+
+    NOTIFY(2, "<=== post_hook done, idx=%u\n", idx);
 }
 
 static app_pc
@@ -169,7 +198,8 @@ instru_funcs_module_load(void *drcontext, const module_data_t *mod, bool loaded)
         func_metadata_t *f = (func_metadata_t *)drvector_get_entry(&funcs, (uint)i);
         app_pc f_pc = get_pc_by_symbol(mod, f->name);
         if (f_pc != NULL) {
-            if (drwrap_wrap_ex(f_pc, func_pre_hook, func_post_hook, (void *)i, 0)) {
+            // if (drwrap_wrap_ex(f_pc, func_pre_hook, func_post_hook, (void *)i, 0)) {
+            if (func_wrap_wrap(f_pc, func_pre_hook, func_post_hook, (void *)i)) {
                 NOTIFY(1, "Inserted hooks for function %s\n", f->name);
             } else {
                 NOTIFY(1, "Failed to insert hooks for function %s\n", f->name);
@@ -260,7 +290,8 @@ func_trace_init(func_trace_append_entry_t append_entry_)
         DR_ASSERT(false);
         goto failed;
     }
-    if (!drwrap_init()) {
+    // if (!drwrap_init()) {
+    if (!func_wrap_init()) {
         DR_ASSERT(false);
         goto failed;
     }
@@ -268,6 +299,11 @@ func_trace_init(func_trace_append_entry_t append_entry_)
         DR_ASSERT(false);
         goto failed;
     }
+
+    // drwrap_set_global_flags(DRWRAP_NO_FRILLS);
+    // drwrap_set_global_flags(DRWRAP_FAST_CLEANCALLS);
+    // drwrap_set_global_flags(DRWRAP_SAFE_READ_RETADDR);
+    // drwrap_set_global_flags(DRWRAP_SAFE_READ_ARGS);
 
     return true;
 failed:
@@ -288,5 +324,6 @@ func_trace_exit()
     if (!drmgr_unregister_module_load_event(instru_funcs_module_load) ||
         !(drsym_exit() == DRSYM_SUCCESS))
         DR_ASSERT(false);
-    drwrap_exit();
+    // drwrap_exit();
+    func_wrap_exit();
 }

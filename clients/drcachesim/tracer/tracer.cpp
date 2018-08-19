@@ -479,6 +479,8 @@ memtrace(void *drcontext, bool skip_size_cap)
                 atomic_pipe_write(drcontext, pipe_start, buf_ptr);
             }
         } else {
+            // NOTIFY(1, "write_trace_data pipe_start=%p, buf_ptr=%p, data->buf_base=%p, data->seg_base=%p\n", pipe_start, buf_ptr, data->buf_base, data->seg_base);
+            NOTIFY(2, "write_trace_data\n");
             write_trace_data(drcontext, pipe_start, buf_ptr);
         }
         auto span = buf_ptr - (data->buf_base + header_size);
@@ -540,6 +542,10 @@ append_marker_seg_base(void *drcontext, trace_marker_type_t marker, uintptr_t va
         return; /* This thread was filtered out. */
     BUF_PTR(data->seg_base) +=
         instru->append_marker(BUF_PTR(data->seg_base), marker, value);
+    if (file_ops_func.handoff_buf == NULL) {
+        NOTIFY(2, "append_marker_seg_base memtrace\n");
+        memtrace(drcontext, false);
+    }
 }
 
 static void
@@ -1575,16 +1581,18 @@ event_exit(void)
 
     drvector_delete(&scratch_reserve_vec);
 
-    if (tracing_enabled) {
-        dr_unregister_filter_syscall_event(event_filter_syscall);
-        if (!drmgr_unregister_pre_syscall_event(event_pre_syscall) ||
-            !drmgr_unregister_kernel_xfer_event(event_kernel_xfer) ||
-            !drmgr_unregister_bb_instrumentation_ex_event(
-                event_bb_app2app, event_bb_analysis, event_app_instruction,
-                event_bb_instru2instru))
-            DR_ASSERT(false);
-    } else {
-        disable_delay_instrumentation();
+    if (!op_disable_trace_memref.get_value()) {
+        if (tracing_enabled) {
+            dr_unregister_filter_syscall_event(event_filter_syscall);
+            if (!drmgr_unregister_pre_syscall_event(event_pre_syscall) ||
+                !drmgr_unregister_kernel_xfer_event(event_kernel_xfer) ||
+                !drmgr_unregister_bb_instrumentation_ex_event(
+                    event_bb_app2app, event_bb_analysis, event_app_instruction,
+                    event_bb_instru2instru))
+                DR_ASSERT(false);
+        } else {
+            disable_delay_instrumentation();
+        }
     }
     if (!drmgr_unregister_tls_field(tls_idx) ||
         !drmgr_unregister_thread_init_event(event_thread_init) ||
@@ -1778,10 +1786,13 @@ drmemtrace_client_main(client_id_t id, int argc, const char *argv[])
         !drmgr_register_thread_exit_event(event_thread_exit))
         DR_ASSERT(false);
 
-    if (op_trace_after_instrs.get_value() > 0)
-        enable_delay_instrumentation();
-    else
-        enable_tracing_instrumentation();
+    if (!op_disable_trace_memref.get_value()) {
+        if (op_trace_after_instrs.get_value() > 0)
+            enable_delay_instrumentation();
+        else {
+            enable_tracing_instrumentation();
+        }
+    }
 
     trace_buf_size = instru->sizeof_entry() * MAX_NUM_ENTRIES;
 

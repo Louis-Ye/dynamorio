@@ -210,6 +210,7 @@ macro(add_drmemtrace name type)
     tracer/instru_online.cpp
     tracer/physaddr.cpp
     tracer/func_trace.cpp
+    tracer/func_wrap.cpp
     ${client_and_sim_srcs}
     )
   configure_DynamoRIO_client(${name})

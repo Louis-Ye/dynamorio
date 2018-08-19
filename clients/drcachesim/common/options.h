@@ -116,4 +116,5 @@ extern droption_t<std::string> op_view_syntax;
 extern droption_t<std::string> op_record_function;
 extern droption_t<bool> op_record_heap;
 extern droption_t<std::string> op_record_heap_value;
+extern droption_t<bool> op_disable_trace_memref;
 #endif /* _OPTIONS_H_ */
